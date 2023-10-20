@@ -1,6 +1,7 @@
 import django_filters
+from django.http import JsonResponse
 from rest_framework.response import Response
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics
 from .serializers import *
 from .models import *
 
@@ -60,3 +61,38 @@ class PeakViewset(viewsets.ModelViewSet):
                     'id': None
                 }
             )
+
+# редактирование объекта перевала, если статус все еще new и данные о самом пользователе не меняются.
+    def partial_update(self, request, *args, **kwargs):
+        pereval = self.get_object()
+        if pereval.status == 'new':
+            serializer = PeakSerializer(pereval, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({
+                    'state': '1',
+                    'message': 'Запись успешно изменена'
+                })
+            else:
+                return Response({
+                    'state': '0',
+                    'message': serializer.errors
+                })
+        else:
+            return Response({
+                'state': '0',
+                'message': f"Не удалось обновить запись, так как сведения уже у модератора и имеют статус: {pereval.get_status_display()}"
+            })
+
+# список данных обо всех объектах, которые пользователь с почтой <email> отправил на сервер.
+class EmailAPIView(generics.ListAPIView):
+    serializer_class = PeakSerializer
+    def get(self, request, *args, **kwargs):
+        email = kwargs.get('email', None)
+        if Peak.objects.filter(user__email=email):
+            data = PeakSerializer(Peak.objects.filter(user__email=email), many=True).data
+        else:
+            data = {
+                'message': f'Не существует пользователя с таким email - {email}'
+            }
+        return JsonResponse(data, safe=False)
